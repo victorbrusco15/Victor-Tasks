@@ -64,8 +64,7 @@ DEALER_MAP = {
     "Blumenau (SC)": "Porsche Center Blumenau",
     "Brasília (DF)": "Porsche Center Brasília",
     "Campinas (SP)": "Porsche Center Campinas",
-    # ATENÇÃO: Campo Grande (MS) ≠ Salvador (BA) — confirmar mapeamento correto com equipe
-    "Campo Grande (MS)": "Porsche Center Campo Grande",
+    "Campo Grande (MS)": "Porsche Center Salvador",
     "Curitiba (PR)": "Porsche Center Curitiba",
     "Florianópolis (SC)": "Porsche Center Florianópolis",
     "Fortaleza (CE)": "Porsche Center Fortaleza",
