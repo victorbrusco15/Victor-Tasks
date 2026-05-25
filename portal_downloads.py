@@ -38,14 +38,14 @@ class PortalConfig:
 PORTALS = [
     PortalConfig(
         name="718",
-        url="https://718-porsche.com.br/admin",
+        url="https://www.718-porsche.com.br/ileads/login/",
         campaign_folder="718",
         username_env="PORSCHE_718_USER",
         password_env="PORSCHE_718_PASSWORD",
     ),
     PortalConfig(
         name="Macan",
-        url="https://macan-porsche.com.br/admin",
+        url="https://www.macan-porsche.com.br/ileads/login/",
         campaign_folder="Macan",
         username_env="PORSCHE_MACAN_USER",
         password_env="PORSCHE_MACAN_PASSWORD",
