@@ -439,77 +439,87 @@ def dump_debug_artifacts(page: Page, portal_name: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Exportação
+# Exportação iLeads
+# Fluxo: clicar em "Período" → clicar "Últimos 7 dias" → clicar "Buscar" → clicar "Exportar"
 # ---------------------------------------------------------------------------
 
-_EXPORT_SELECTORS = [
-    "text=Exportar",
-    "text=Export",
-    "text=Baixar",
-    "text=Download",
-    "button:has-text('Exportar')",
-    "button:has-text('Export')",
-    "button:has-text('Baixar')",
-    "button:has-text('Download')",
-    "a[href*='export']",
-    "a[href*='download']",
-    "button[type='submit']",
-    "input[type='submit']",
-]
-
-_FILTER_SELECTORS = [
-    "text=Filtrar",
-    "text=Buscar",
-    "button:has-text('Aplicar')",
-    "button:has-text('Filtrar')",
-]
-
-
 def trigger_export(page: Page, download_dir: Path, config: PortalConfig, start: date, end: date) -> Path:
-    set_period(page, start, end)
-    try_click(page, _FILTER_SELECTORS, timeout=2000)
-    ensure_page_ready(page)
+    # Garante que está na página de listagem de leads
+    if "leads_list" not in page.url:
+        base = page.url.split("/ileads/")[0]
+        page.goto(f"{base}/ileads/leads_list/", wait_until="domcontentloaded", timeout=30_000)
+        ensure_page_ready(page)
 
-    scope, locator = find_visible_locator(page, _EXPORT_SELECTORS, timeout=3000)
-    if locator is None:
+    # 1) Abre o seletor de período
+    periodo_field = page.locator("input[placeholder='Período'], input:has-text('Período')").first
+    try:
+        periodo_field.wait_for(state="visible", timeout=5_000)
+        periodo_field.click()
+    except Exception:
+        # Tenta pelo texto do label
+        try_click(page, ["text=Período"], timeout=3_000)
+
+    # 2) Clica em "Últimos 7 dias" no popup do calendário
+    ultimos7 = page.locator("text=Últimos 7 dias").first
+    try:
+        ultimos7.wait_for(state="visible", timeout=5_000)
+        ultimos7.click()
+    except Exception:
         dump_debug_artifacts(page, config.name)
         raise RuntimeError(
-            f"{config.name}: botão/link de exportação não encontrado. "
-            f"Artefatos de debug em {LOG_DIR}."
+            f"{config.name}: popup de período não abriu. Artefatos de debug em {LOG_DIR}."
         )
 
-    capture_kind, capture_value = capture_download_from_click(page, locator)
+    page.wait_for_timeout(500)  # aguarda o campo ser preenchido
+
+    # 3) Clica em "Buscar"
+    buscar = page.locator("button:has-text('Buscar'), input[value='Buscar']").first
+    try:
+        buscar.wait_for(state="visible", timeout=5_000)
+        buscar.click()
+    except Exception:
+        dump_debug_artifacts(page, config.name)
+        raise RuntimeError(f"{config.name}: botão 'Buscar' não encontrado.")
+
+    ensure_page_ready(page)
+    page.wait_for_timeout(1_000)  # aguarda tabela renderizar
+
+    # 4) Clica em "Exportar" e captura o download
+    exportar = page.locator("button:has-text('Exportar'), a:has-text('Exportar')").first
+    try:
+        exportar.wait_for(state="visible", timeout=5_000)
+    except Exception:
+        dump_debug_artifacts(page, config.name)
+        raise RuntimeError(f"{config.name}: botão 'Exportar' não encontrado após busca.")
+
+    capture_kind, capture_value = capture_download_from_click(page, exportar)
     if capture_kind is None:
         dump_debug_artifacts(page, config.name)
         raise RuntimeError(
-            f"{config.name}: clique no botão de export não produziu download, popup nem resposta."
+            f"{config.name}: clique em 'Exportar' não gerou download. Artefatos em {LOG_DIR}."
         )
 
-    # Nome temporário único por portal/período; renomeia para PlanilhaB.xlsx no final
-    temp_target = download_dir / f"PlanilhaB_{config.name}_{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
     final_target = download_dir / "PlanilhaB.xlsx"
 
-    save_captured_export(page, capture_kind, capture_value, temp_target, config.name)
-
-    # Faz backup de eventual PlanilhaB.xlsx anterior antes de sobrescrever
+    # Backup do arquivo anterior se existir
     if final_target.exists():
         backup = download_dir / f"PlanilhaB_backup_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
         final_target.rename(backup)
-        logging.info("%s: PlanilhaB.xlsx anterior salvo como %s", config.name, backup.name)
+        logging.info("%s: arquivo anterior salvo como %s", config.name, backup.name)
+
+    temp_target = download_dir / f"PlanilhaB_{config.name}_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+    save_captured_export(page, capture_kind, capture_value, temp_target, config.name)
 
     if temp_target.exists():
         temp_target.rename(final_target)
     else:
-        # Playwright pode ter salvo com extensão diferente
         candidates = sorted(
-            download_dir.glob(f"{temp_target.stem}.*"),
+            download_dir.glob("PlanilhaB_*.xlsx"),
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
         if not candidates:
-            raise RuntimeError(
-                f"{config.name}: arquivo exportado não encontrado após o clique."
-            )
+            raise RuntimeError(f"{config.name}: arquivo exportado não encontrado após download.")
         candidates[0].rename(final_target)
 
     logging.info("%s: export salvo em %s", config.name, final_target)
