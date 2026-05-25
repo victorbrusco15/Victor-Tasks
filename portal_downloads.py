@@ -165,16 +165,23 @@ def ensure_page_ready(page: Page) -> None:
 # ---------------------------------------------------------------------------
 
 _LOGIN_USER_SELECTORS = [
+    "input[name='usuario']",
+    "input[name='user']",
     "input[name='email']",
     "input[name='username']",
+    "input[name='login']",
     "input[type='email']",
     "#email",
     "#username",
+    "#usuario",
 ]
 _LOGIN_PASS_SELECTORS = [
+    "input[name='senha']",
     "input[name='password']",
+    "input[name='pass']",
     "input[type='password']",
     "#password",
+    "#senha",
 ]
 _LOGIN_SUBMIT_SELECTORS = [
     "button[type='submit']",
@@ -189,11 +196,43 @@ def login_if_needed(page: Page, config: PortalConfig) -> None:
     username = os.getenv(config.username_env)
     password = os.getenv(config.password_env)
     if not username or not password:
-        logging.warning("%s: credenciais não configuradas; usando sessão salva (se existir).", config.name)
+        # Sem credenciais configuradas: aguarda login manual por até 2 minutos
+        print(f"\n[{config.name}] Credenciais não configuradas.")
+        print(f"[{config.name}] Faça o login manualmente no navegador. O script continua automaticamente após o login.")
+        print(f"[{config.name}] Aguardando até 120 segundos...")
+        try:
+            page.wait_for_url("**/*", wait_until="domcontentloaded", timeout=120_000)
+            # Espera sair da página de login
+            page.wait_for_function(
+                "() => !window.location.href.includes('login')",
+                timeout=120_000,
+            )
+        except Exception:
+            pass
         return
 
     typed_user = set_value(page, _LOGIN_USER_SELECTORS, username)
+    if not typed_user:
+        # Fallback: preenche o primeiro input de texto visível da página
+        try:
+            first_input = page.locator("input:not([type='hidden']):not([type='password'])").first
+            first_input.wait_for(state="visible", timeout=3000)
+            _try_fill(first_input, username)
+            typed_user = True
+        except Exception:
+            pass
+
     typed_pass = set_value(page, _LOGIN_PASS_SELECTORS, password)
+    if not typed_pass:
+        # Fallback: preenche o primeiro input de senha visível
+        try:
+            pass_input = page.locator("input[type='password']").first
+            pass_input.wait_for(state="visible", timeout=3000)
+            _try_fill(pass_input, password)
+            typed_pass = True
+        except Exception:
+            pass
+
     if typed_user and typed_pass:
         try_click(page, _LOGIN_SUBMIT_SELECTORS, timeout=2500)
         ensure_page_ready(page)
