@@ -608,7 +608,13 @@ def download_portal(config: PortalConfig, base_path: Path, start: date, end: dat
         browser = p.chromium.launch(headless=headless)
         ctx_kwargs: dict = {
             "accept_downloads": True,
-            "viewport": {"width": 1366, "height": 768},  # evita popup fora do viewport em headless
+            "viewport": {"width": 1366, "height": 768},
+            # User agent sem "Headless" — proxy corporativo bloqueia HeadlessChrome
+            "user_agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/145.0.0.0 Safari/537.36"
+            ),
         }
         if storage_state.exists():
             ctx_kwargs["storage_state"] = str(storage_state)
