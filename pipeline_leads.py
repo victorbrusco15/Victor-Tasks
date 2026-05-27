@@ -123,10 +123,18 @@ def format_phone(phone: object) -> str:
     return f"+{digits}"
 
 
-def split_name(name: object) -> tuple[str, str]:
+def normalize_name(name: object) -> str:
+    """Converte para Title Case: 'FELIPE VASCONCELLOS' → 'Felipe Vasconcellos'."""
     if pd.isna(name) or not str(name).strip():
+        return ""
+    return str(name).strip().title()
+
+
+def split_name(name: object) -> tuple[str, str]:
+    normalized = normalize_name(name)
+    if not normalized:
         return "", ""
-    parts = str(name).strip().split(maxsplit=1)
+    parts = normalized.split(maxsplit=1)
     return parts[0], (parts[1] if len(parts) > 1 else "")
 
 

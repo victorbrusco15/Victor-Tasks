@@ -154,7 +154,7 @@ class TestFormatPhone:
 
 class TestSplitName:
     def test_full_name(self):
-        assert pl.split_name("João da Silva Sauro") == ("João", "da Silva Sauro")
+        assert pl.split_name("João da Silva Sauro") == ("João", "Da Silva Sauro")
 
     def test_single_name(self):
         assert pl.split_name("Cher") == ("Cher", "")
@@ -164,6 +164,15 @@ class TestSplitName:
 
     def test_nan(self):
         assert pl.split_name(float("nan")) == ("", "")
+
+    def test_all_caps(self):
+        assert pl.split_name("FELIPE VASCONCELLOS") == ("Felipe", "Vasconcellos")
+
+    def test_mixed_case(self):
+        assert pl.split_name("Tiago caldeira") == ("Tiago", "Caldeira")
+
+    def test_whitespace_only(self):
+        assert pl.split_name("   ") == ("", "")
 
     def test_whitespace_only(self):
         assert pl.split_name("   ") == ("", "")
