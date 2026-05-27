@@ -443,6 +443,83 @@ def dump_debug_artifacts(page: Page, portal_name: str) -> None:
 # Fluxo: clicar em "Período" → clicar "Últimos 7 dias" → clicar "Buscar" → clicar "Exportar"
 # ---------------------------------------------------------------------------
 
+def _click_periodo_field(page: Page) -> bool:
+    """Abre o calendário de período. Retorna True se conseguiu abrir."""
+    # Tenta get_by_placeholder (mais robusto com acentos no headless)
+    for placeholder in ["Período", "Periodo", "período", "periodo"]:
+        try:
+            loc = page.get_by_placeholder(placeholder).first
+            loc.wait_for(state="visible", timeout=3_000)
+            loc.click()
+            return True
+        except Exception:
+            continue
+
+    # Fallback: qualquer input com valor parecido com data (ex: "24/05/2026 - 24/05/2026")
+    try:
+        loc = page.locator("input[placeholder*='odo']").first
+        loc.wait_for(state="visible", timeout=3_000)
+        loc.click()
+        return True
+    except Exception:
+        pass
+
+    # Último recurso: JavaScript para clicar no input de data
+    try:
+        page.evaluate("""
+            const inputs = document.querySelectorAll('input');
+            for (const el of inputs) {
+                const ph = (el.placeholder || '').toLowerCase();
+                if (ph.includes('odo') || ph.includes('erio')) {
+                    el.click();
+                    el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                    break;
+                }
+            }
+        """)
+        return True
+    except Exception:
+        return False
+
+
+def _click_ultimos_7_dias(page: Page) -> bool:
+    """Clica na opção 'Últimos 7 dias' do calendário. Retorna True se conseguiu."""
+    # Espera o popup aparecer (qualquer elemento do daterangepicker)
+    page.wait_for_timeout(800)
+
+    selectors = [
+        "li:has-text('7 dias')",
+        "span:has-text('7 dias')",
+        "a:has-text('7 dias')",
+        ":text('7 dias')",
+        "li:has-text('ltimos 7')",   # sem o Ú para contornar encoding
+    ]
+    for selector in selectors:
+        try:
+            loc = page.locator(selector).first
+            loc.wait_for(state="visible", timeout=3_000)
+            loc.click()
+            return True
+        except Exception:
+            continue
+
+    # Fallback JavaScript: clica no elemento de texto que contém "7 dias"
+    try:
+        clicked = page.evaluate("""
+            const all = document.querySelectorAll('li, a, span, div');
+            for (const el of all) {
+                if (el.textContent.includes('7 dias')) {
+                    el.click();
+                    return true;
+                }
+            }
+            return false;
+        """)
+        return bool(clicked)
+    except Exception:
+        return False
+
+
 def trigger_export(page: Page, download_dir: Path, config: PortalConfig, start: date, end: date) -> Path:
     # Garante que está na página de listagem de leads
     if "leads_list" not in page.url:
@@ -451,26 +528,16 @@ def trigger_export(page: Page, download_dir: Path, config: PortalConfig, start: 
         ensure_page_ready(page)
 
     # 1) Abre o seletor de período
-    periodo_field = page.locator("input[placeholder='Período'], input:has-text('Período')").first
-    try:
-        periodo_field.wait_for(state="visible", timeout=5_000)
-        periodo_field.click()
-    except Exception:
-        # Tenta pelo texto do label
-        try_click(page, ["text=Período"], timeout=3_000)
-
-    # 2) Clica em "Últimos 7 dias" no popup do calendário
-    ultimos7 = page.locator("text=Últimos 7 dias").first
-    try:
-        ultimos7.wait_for(state="visible", timeout=5_000)
-        ultimos7.click()
-    except Exception:
+    if not _click_periodo_field(page):
         dump_debug_artifacts(page, config.name)
-        raise RuntimeError(
-            f"{config.name}: popup de período não abriu. Artefatos de debug em {LOG_DIR}."
-        )
+        raise RuntimeError(f"{config.name}: campo de período não encontrado. Debug em {LOG_DIR}.")
 
-    page.wait_for_timeout(500)  # aguarda o campo ser preenchido
+    # 2) Clica em "Últimos 7 dias"
+    if not _click_ultimos_7_dias(page):
+        dump_debug_artifacts(page, config.name)
+        raise RuntimeError(f"{config.name}: opção 'Últimos 7 dias' não apareceu. Debug em {LOG_DIR}.")
+
+    page.wait_for_timeout(500)
 
     # 3) Clica em "Buscar"
     buscar = page.locator("button:has-text('Buscar'), input[value='Buscar']").first
@@ -482,7 +549,7 @@ def trigger_export(page: Page, download_dir: Path, config: PortalConfig, start: 
         raise RuntimeError(f"{config.name}: botão 'Buscar' não encontrado.")
 
     ensure_page_ready(page)
-    page.wait_for_timeout(1_000)  # aguarda tabela renderizar
+    page.wait_for_timeout(1_000)
 
     # 4) Clica em "Exportar" e captura o download
     exportar = page.locator("button:has-text('Exportar'), a:has-text('Exportar')").first
@@ -495,13 +562,10 @@ def trigger_export(page: Page, download_dir: Path, config: PortalConfig, start: 
     capture_kind, capture_value = capture_download_from_click(page, exportar)
     if capture_kind is None:
         dump_debug_artifacts(page, config.name)
-        raise RuntimeError(
-            f"{config.name}: clique em 'Exportar' não gerou download. Artefatos em {LOG_DIR}."
-        )
+        raise RuntimeError(f"{config.name}: clique em 'Exportar' não gerou download. Debug em {LOG_DIR}.")
 
     final_target = download_dir / "PlanilhaB.xlsx"
 
-    # Backup do arquivo anterior se existir
     if final_target.exists():
         backup = download_dir / f"PlanilhaB_backup_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
         final_target.rename(backup)
