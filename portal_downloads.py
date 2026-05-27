@@ -20,6 +20,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
+import pandas as pd
+
 from playwright.sync_api import Download, Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 BASE_PATH = Path(r"C:\Users\BRUSCOVI\OneDrive - Dr. Ing. h.c. F. Porsche AG\Documents\Python\Campaigns")
@@ -595,6 +597,43 @@ def trigger_export(page: Page, download_dir: Path, config: PortalConfig, start: 
 
 
 # ---------------------------------------------------------------------------
+# Filtro de período pós-download
+# ---------------------------------------------------------------------------
+
+def filter_by_period(path: Path, start: date, portal_name: str) -> None:
+    """
+    Lê o Excel baixado, remove linhas anteriores a `start` pela coluna
+    'Data de criação', e salva o arquivo filtrado no mesmo caminho.
+
+    Racional:
+      - Segunda-feira: start = sexta anterior  (cobre fim de semana)
+      - Demais dias:   start = ontem
+    """
+    df = pd.read_excel(path, dtype=str)
+
+    # Busca a coluna de data de criação (tolerante a variações de nome)
+    date_col = next(
+        (c for c in df.columns if "data" in c.lower() and "cria" in c.lower()),
+        None,
+    )
+    if date_col is None:
+        logging.warning("%s: coluna 'Data de criação' não encontrada; filtro de data ignorado.", portal_name)
+        return
+
+    parsed = pd.to_datetime(df[date_col], errors="coerce")
+    before = len(df)
+    mask = parsed.dt.date >= start
+    df = df[mask].copy()
+    removed = before - len(df)
+
+    df.to_excel(path, index=False, engine="openpyxl")
+
+    msg = f"{portal_name}: {removed} linha(s) removida(s) (anteriores a {start:%d/%m/%Y}), {len(df)} mantida(s)"
+    logging.info(msg)
+    print(f"  {msg}")
+
+
+# ---------------------------------------------------------------------------
 # Orquestração por portal
 # ---------------------------------------------------------------------------
 
@@ -625,6 +664,7 @@ def download_portal(config: PortalConfig, base_path: Path, start: date, end: dat
             ensure_page_ready(page)
             login_if_needed(page, config)
             downloaded = trigger_export(page, download_dir, config, start, end)
+            filter_by_period(downloaded, start, config.name)
         finally:
             # Persiste sessão mesmo em caso de erro (login pode ter funcionado)
             try:
