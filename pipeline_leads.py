@@ -123,11 +123,23 @@ def format_phone(phone: object) -> str:
     return f"+{digits}"
 
 
+_NAME_PARTICLES = {"da", "de", "do", "das", "dos", "des", "e", "y"}
+
+
 def normalize_name(name: object) -> str:
-    """Converte para Title Case: 'FELIPE VASCONCELLOS' → 'Felipe Vasconcellos'."""
+    """Title Case com partículas minúsculas: 'ANA DE SOUZA' → 'Ana de Souza'."""
     if pd.isna(name) or not str(name).strip():
         return ""
-    return str(name).strip().title()
+    words = str(name).strip().split()
+    result = []
+    for i, word in enumerate(words):
+        lower = word.lower()
+        # Primeira palavra sempre capitalizada; partículas no meio ficam minúsculas
+        if i > 0 and lower in _NAME_PARTICLES:
+            result.append(lower)
+        else:
+            result.append(lower.capitalize())
+    return " ".join(result)
 
 
 def split_name(name: object) -> tuple[str, str]:

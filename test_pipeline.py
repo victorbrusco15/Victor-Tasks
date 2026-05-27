@@ -154,7 +154,7 @@ class TestFormatPhone:
 
 class TestSplitName:
     def test_full_name(self):
-        assert pl.split_name("João da Silva Sauro") == ("João", "Da Silva Sauro")
+        assert pl.split_name("João da Silva Sauro") == ("João", "da Silva Sauro")
 
     def test_single_name(self):
         assert pl.split_name("Cher") == ("Cher", "")
@@ -170,6 +170,22 @@ class TestSplitName:
 
     def test_mixed_case(self):
         assert pl.split_name("Tiago caldeira") == ("Tiago", "Caldeira")
+
+    def test_particle_de(self):
+        assert pl.split_name("ANA DE SOUZA") == ("Ana", "de Souza")
+
+    def test_particle_da(self):
+        assert pl.split_name("CARLOS DA SILVA") == ("Carlos", "da Silva")
+
+    def test_particle_dos(self):
+        assert pl.split_name("MARIA DOS SANTOS") == ("Maria", "dos Santos")
+
+    def test_particle_e(self):
+        assert pl.split_name("PEDRO E SILVA") == ("Pedro", "e Silva")
+
+    def test_particle_first_word_still_capitalized(self):
+        # Partícula no início do nome completo deve ser capitalizada
+        assert pl.split_name("de souza carlos") == ("De", "Souza Carlos")
 
     def test_whitespace_only(self):
         assert pl.split_name("   ") == ("", "")
