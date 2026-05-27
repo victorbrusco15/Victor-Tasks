@@ -445,34 +445,37 @@ def dump_debug_artifacts(page: Page, portal_name: str) -> None:
 
 def _click_periodo_field(page: Page) -> bool:
     """Abre o calendário de período. Retorna True se conseguiu abrir."""
-    # Tenta get_by_placeholder (mais robusto com acentos no headless)
+    # Estratégia 1: get_by_placeholder (robusto com acentos)
     for placeholder in ["Período", "Periodo", "período", "periodo"]:
         try:
             loc = page.get_by_placeholder(placeholder).first
             loc.wait_for(state="visible", timeout=3_000)
-            loc.click()
+            loc.click(force=True)
             return True
         except Exception:
             continue
 
-    # Fallback: qualquer input com valor parecido com data (ex: "24/05/2026 - 24/05/2026")
+    # Estratégia 2: seletor parcial sem acento
     try:
         loc = page.locator("input[placeholder*='odo']").first
         loc.wait_for(state="visible", timeout=3_000)
-        loc.click()
+        loc.click(force=True)
         return True
     except Exception:
         pass
 
-    # Último recurso: JavaScript para clicar no input de data
+    # Estratégia 3: JavaScript com múltiplos eventos para garantir abertura do popup
     try:
         page.evaluate("""
             const inputs = document.querySelectorAll('input');
             for (const el of inputs) {
                 const ph = (el.placeholder || '').toLowerCase();
-                if (ph.includes('odo') || ph.includes('erio')) {
+                if (ph.includes('odo') || ph.includes('erio') || ph.includes('ata')) {
+                    el.focus();
                     el.click();
-                    el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+                    el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true}));
+                    el.dispatchEvent(new MouseEvent('mouseup',   {bubbles: true, cancelable: true}));
+                    el.dispatchEvent(new MouseEvent('click',     {bubbles: true, cancelable: true}));
                     break;
                 }
             }
@@ -484,31 +487,32 @@ def _click_periodo_field(page: Page) -> bool:
 
 def _click_ultimos_7_dias(page: Page) -> bool:
     """Clica na opção 'Últimos 7 dias' do calendário. Retorna True se conseguiu."""
-    # Espera o popup aparecer (qualquer elemento do daterangepicker)
-    page.wait_for_timeout(800)
+    # Aguarda o popup renderizar — aumentado para headless
+    page.wait_for_timeout(1_500)
 
     selectors = [
         "li:has-text('7 dias')",
         "span:has-text('7 dias')",
         "a:has-text('7 dias')",
-        ":text('7 dias')",
-        "li:has-text('ltimos 7')",   # sem o Ú para contornar encoding
+        "li:has-text('ltimos 7')",
+        ".ranges li:nth-child(3)",   # "Últimos 7 dias" costuma ser o 3º item
+        ".daterangepicker li:nth-child(3)",
     ]
     for selector in selectors:
         try:
             loc = page.locator(selector).first
             loc.wait_for(state="visible", timeout=3_000)
-            loc.click()
+            loc.click(force=True)
             return True
         except Exception:
             continue
 
-    # Fallback JavaScript: clica no elemento de texto que contém "7 dias"
+    # Fallback JavaScript
     try:
         clicked = page.evaluate("""
             const all = document.querySelectorAll('li, a, span, div');
             for (const el of all) {
-                if (el.textContent.includes('7 dias')) {
+                if (el.textContent.trim().includes('7 dias')) {
                     el.click();
                     return true;
                 }
@@ -602,7 +606,10 @@ def download_portal(config: PortalConfig, base_path: Path, start: date, end: dat
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
-        ctx_kwargs: dict = {"accept_downloads": True}
+        ctx_kwargs: dict = {
+            "accept_downloads": True,
+            "viewport": {"width": 1366, "height": 768},  # evita popup fora do viewport em headless
+        }
         if storage_state.exists():
             ctx_kwargs["storage_state"] = str(storage_state)
         context = browser.new_context(**ctx_kwargs)
